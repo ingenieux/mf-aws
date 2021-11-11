@@ -160,7 +160,40 @@ func (e *MFEngine) getSessionToken() error {
 }
 
 func (e *MFEngine) outputCredentials() error {
-	forbiddenVars := []string{"AWS_ACCESS_KEY_ID", "AWS_PROFILE", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_EXPIRATION"}
+	err := e.writeDisableStatements()
+
+	if nil != err {
+		return err
+	}
+
+	nvPairs := make(map[string]string)
+
+	nvPairs["AWS_ACCESS_KEY_ID"] = *e.sessionTokenOutput.Credentials.AccessKeyId
+	nvPairs["AWS_SECRET_ACCESS_KEY"] = *e.sessionTokenOutput.Credentials.SecretAccessKey
+	nvPairs["AWS_SESSION_TOKEN"] = *e.sessionTokenOutput.Credentials.SessionToken
+	nvPairs["AWS_TOKEN_EXPIRATION"] = fmt.Sprintf("%d", e.sessionTokenOutput.Credentials.Expiration.Unix())
+
+	nvStatements := make([]string, 0)
+
+	for k, v := range nvPairs {
+		nvStatements = append(nvStatements, fmt.Sprintf("%s='%s'", k, v))
+	}
+
+	joinedStatementsToSet := strings.Join(nvStatements, " ")
+
+	exportStatement := fmt.Sprintf("export %s\n", joinedStatementsToSet)
+
+	_, err = e.output.Write([]byte(exportStatement))
+
+	if nil != err {
+		return errorx.Decorate(err, "writing statements for credentials")
+	}
+
+	return nil
+}
+
+func (e *MFEngine) writeDisableStatements() error {
+	forbiddenVars := []string{"AWS_ACCESS_KEY_ID", "AWS_PROFILE", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_TOKEN_EXPIRATION"}
 
 	varsToDelete := make([]string, 0)
 
@@ -170,31 +203,12 @@ func (e *MFEngine) outputCredentials() error {
 		}
 	}
 
-	nvPairs := make(map[string]string)
-
-	nvPairs["AWS_ACCESS_KEY_ID"] = *e.sessionTokenOutput.Credentials.AccessKeyId
-	nvPairs["AWS_SECRET_ACCESS_KEY"] = *e.sessionTokenOutput.Credentials.SecretAccessKey
-	nvPairs["AWS_SESSION_TOKEN"] = *e.sessionTokenOutput.Credentials.SessionToken
-	nvPairs["AWS_EXPIRATION"] = fmt.Sprintf("%d", e.sessionTokenOutput.Credentials.Expiration.Unix())
-
-	nvStatements := make([]string, len(nvPairs))
-
-	for k, v := range nvPairs {
-		nvStatements = append(nvStatements, fmt.Sprintf("%s='%s'", k, v))
-	}
-
 	if 0 != len(varsToDelete) {
 		_, err := e.output.Write([]byte(fmt.Sprintf("unset %s\n", strings.Join(varsToDelete, " "))))
 
 		if nil != err {
 			return errorx.Decorate(err, "writing statements to delete")
 		}
-	}
-
-	_, err := e.output.Write([]byte(fmt.Sprintf("export %s\n", strings.Join(nvStatements, " "))))
-
-	if nil != err {
-		return errorx.Decorate(err, "writing statements for credentials")
 	}
 
 	return nil
