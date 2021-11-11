@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/avast/retry-go"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/creachadair/otp/otpauth"
@@ -120,8 +121,10 @@ func (e *MFEngine) loadConfig() error {
 
 func (e *MFEngine) getSession() (*session.Session, error) {
 	return session.NewSessionWithOptions(session.Options{
-		Config:  aws.Config{Region: aws.String(region)},
-		Profile: e.profile,
+		Config: aws.Config{
+			Region:      aws.String(region),
+			Credentials: credentials.NewSharedCredentials("", e.profile),
+		},
 	})
 }
 
@@ -148,7 +151,7 @@ func (e *MFEngine) getSessionToken() error {
 		}
 
 		return
-	})
+	}, retry.Attempts(2), retry.Delay(1*time.Second))
 
 	if nil != err {
 		return err
